@@ -3,6 +3,8 @@ name: Fork checks
 # This workflow is only for forks, so they can get basic checks in without a CircleCI API key
 on:
   push:
+    branches-ignore:
+      - 'diagnostics/**'
 
 env:
   NODE_OPTIONS: '--max_old_space_size=4096'

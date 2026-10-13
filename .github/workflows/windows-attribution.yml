@@ -1,0 +1,61 @@
+name: Windows failure attribution
+on:
+  push:
+    branches:
+      - diagnostics/pseudo-states-windows-36761
+permissions:
+  contents: read
+concurrency:
+  group: windows-attribution-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    name: ${{ matrix.name }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - name: unchanged-upstream-windows
+            ref: b7c28696741ad16d3cc5a2789cbde5520d30f9d8
+          - name: contribution-windows
+            ref: 70740e42717a8edb592ca109b2feadc1e5f8b0e6
+    env:
+      NODE_OPTIONS: --max_old_space_size=4096
+      STORYBOOK_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ matrix.ref }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Setup dependencies using the fork CI procedure
+        uses: ./.github/actions/setup-node-and-install
+        with:
+          install-code-deps: true
+      - name: Record Windows environment
+        shell: bash
+        run: |
+          git rev-parse HEAD
+          npm --version
+          node -e "console.log(JSON.stringify({node:process.version,platform:process.platform,arch:process.arch,cwd:process.cwd(),tmpdir:require('node:os').tmpdir(),imageOS:process.env.ImageOS,imageVersion:process.env.ImageVersion}))"
+      - name: Compile distribution artifacts using the fork CI procedure
+        run: yarn task --task compile --start-from=compile --no-link
+      - name: Run the three failing test files without retries
+        run: >-
+          yarn test --project '!agent-eval' --project '!storybook-ui'
+          code/lib/codemod/src/index.test.ts
+          code/frameworks/sveltekit/src/plugins/dev-public-env.test.ts
+          code/core/src/common/js-package-manager/NPMProxy.test.ts
+          --maxWorkers=4 --retry=0 --reporter=default --reporter=json
+          --outputFile=windows-results.json
+      - name: Preserve the actual Windows verdicts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.name }}
+          path: windows-results.json
+          if-no-files-found: warn
+          retention-days: 7
